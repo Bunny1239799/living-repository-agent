@@ -1,0 +1,30 @@
+{
+  "mission_id": "002-research-engine",
+  "mission_dir": "MISSIONS/002-research-engine",
+  "question": "Which GitHub Actions controls should LRA review to reduce workflow security risks and preserve least privilege?",
+  "allowed_hosts": ["docs.github.com"],
+  "sources": [
+    {
+      "url": "https://docs.github.com/en/actions/concepts/security/github_token",
+      "keywords": ["permissions", "least privilege", "GITHUB_TOKEN", "token"]
+    },
+    {
+      "url": "https://docs.github.com/en/actions/reference/security/secure-use",
+      "keywords": ["least privilege", "untrusted input", "third-party actions", "secrets"]
+    },
+    {
+      "url": "https://docs.github.com/en/actions/concepts/security/script-injections",
+      "keywords": ["untrusted input", "script injection", "issue title", "event"]
+    }
+  ],
+  "synthesis_groups": [
+    {
+      "title": "Token permissions and least privilege",
+      "keywords": ["permission", "least privilege", "GITHUB_TOKEN", "token"]
+    },
+    {
+      "title": "Untrusted input and script injection",
+      "keywords": ["untrusted input", "script injection", "issue title", "event"]
+    }
+  ]
+}
