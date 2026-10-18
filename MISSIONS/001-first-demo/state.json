@@ -1,6 +1,7 @@
 {
   "mission_id": "001-first-demo",
-  "state": "Init",
+  "state": "AwaitApproval",
   "created": "2026-10-18",
-  "title": "First demonstration mission"
+  "title": "First demonstration mission",
+  "issue_number": 1
 }
