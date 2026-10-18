@@ -1,0 +1,263 @@
+name: LRA Research Mission Runner
+
+on:
+  workflow_dispatch:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  research-and-request-approval:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run bounded research engine
+        run: python tools/lra_research.py --config MISSIONS/002-research-engine/research-config.json --root .
+
+      - name: Validate evidence and prepare approval request
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          mission = Path("MISSIONS/002-research-engine")
+          state_path = mission / "state.json"
+          findings_path = mission / "findings" / "research.md"
+          synthesis_path = mission / "synthesis.md"
+          artifact_path = mission / "artifacts" / "stage-record.md"
+
+          state = json.loads(state_path.read_text(encoding="utf-8"))
+          if state.get("state") != "Synthesize":
+              raise SystemExit(f"FAIL: expected Synthesize after research; found {state.get('state')!r}")
+          if artifact_path.exists():
+              raise SystemExit("FAIL: stage artifact already exists; refusing to proceed")
+          if not findings_path.is_file() or len(findings_path.read_text(encoding="utf-8").strip()) < 100:
+              raise SystemExit("FAIL: research findings are missing or too short")
+          if not synthesis_path.is_file() or len(synthesis_path.read_text(encoding="utf-8").strip()) < 100:
+              raise SystemExit("FAIL: synthesis is missing or too short")
+
+          findings = findings_path.read_text(encoding="utf-8")
+          if "https://" not in findings:
+              raise SystemExit("FAIL: findings contain no HTTPS source references")
+
+          proposal_path = mission / "proposals" / "proposal.md"
+          proposal_path.parent.mkdir(parents=True, exist_ok=True)
+          proposal_path.write_text(
+              "# Mission 002 — Approval Proposal\n\n"
+              "## Requested decision\n"
+              "Approve staging the current research-engine demonstration record.\n\n"
+              "## Evidence available\n"
+              "Review `findings/research.md` for retrieved source excerpts and URLs, "
+              "and `synthesis.md` for the engine's extractive synthesis.\n\n"
+              "## Limitations\n"
+              "This is a bounded, extractive research pipeline. Its output is not an "
+              "independent fact-check, and source retrieval does not establish that "
+              "every claim is true. A human must review the evidence before approval.\n\n"
+              "## Safety boundary\n"
+              "No stage artifact has been created. Staging is permitted only after "
+              "the separate approval-verification job accepts an authorized approval.\n",
+              encoding="utf-8"
+          )
+
+          state["state"] = "AwaitApproval"
+          state.pop("issue_number", None)
+          state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+
+          log_path = mission / "log.md"
+          with log_path.open("a", encoding="utf-8") as log:
+              log.write("\n- Research workflow validated non-empty findings and synthesis; moved to AwaitApproval. No stage artifact created.\n")
+          PY
+
+      - name: Create or reuse the Mission 002 approval issue
+        id: approval_issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '[LRA-MISSION-002] Research synthesis approval';
+            const marker = 'LRA-MISSION:002';
+            const { owner, repo } = context.repo;
+            const listed = await github.rest.issues.listForRepo({
+              owner, repo, state: 'open', per_page: 100
+            });
+            const existing = listed.data.find(i =>
+              !i.pull_request && i.title === title && (i.body || '').includes(marker)
+            );
+            if (existing) {
+              core.setOutput('number', String(existing.number));
+              core.info(`Reusing open Mission 002 approval issue #${existing.number}.`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner, repo, title,
+                body: `${marker}\n\nMission 002 research has completed its bounded pipeline.\n\nPlease review the committed findings, source URLs, synthesis, and proposal before deciding.\n\n**This issue is an approval gate, not proof that the research is correct.**\n\nTo authorize the staging demonstration, an authorized repository collaborator must add the exact \`approved\` label or post a comment whose entire body is \`APPROVED\`. Ordinary comments do not authorize staging.\n\nNo stage artifact should exist before approval.`
+              });
+              core.setOutput('number', String(created.data.number));
+              core.info(`Created Mission 002 approval issue #${created.data.number}.`);
+            }
+
+      - name: Record approval issue and verify state
+        env:
+          APPROVAL_ISSUE: ${{ steps.approval_issue.outputs.number }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path("MISSIONS/002-research-engine/state.json")
+          state = json.loads(p.read_text(encoding="utf-8"))
+          if state.get("state") != "AwaitApproval":
+              raise SystemExit("FAIL: mission left AwaitApproval unexpectedly")
+          if not os.environ["APPROVAL_ISSUE"].isdigit():
+              raise SystemExit("FAIL: approval issue number is invalid")
+          state["issue_number"] = int(os.environ["APPROVAL_ISSUE"])
+          p.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+          with Path("MISSIONS/002-research-engine/log.md").open("a", encoding="utf-8") as f:
+              f.write(f"\n- Approval request recorded: issue #{state['issue_number']}. Awaiting authorized human approval.\n")
+          PY
+
+      - name: Commit research outputs and approval state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add MISSIONS/002-research-engine/state.json MISSIONS/002-research-engine/findings/research.md MISSIONS/002-research-engine/synthesis.md MISSIONS/002-research-engine/proposals/proposal.md MISSIONS/002-research-engine/log.md
+          git diff --cached --check
+          git commit -m "Run Mission 002 research and request approval"
+          git push origin HEAD:main
+
+  verify-approval:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      approved: ${{ steps.verify.outputs.approved }}
+    steps:
+      - name: Verify approval identity, issue, and action
+        id: verify
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.setOutput('approved', 'false');
+            const issue = context.payload.issue;
+            const marker = 'LRA-MISSION:002';
+            const title = '[LRA-MISSION-002] Research synthesis approval';
+
+            if (!issue || issue.pull_request || issue.title !== title ||
+                !(issue.body || '').includes(marker) || issue.state !== 'open') {
+              core.info('Not the active Mission 002 approval issue.');
+              return;
+            }
+
+            const sender = context.payload.sender;
+            if (!sender || sender.type === 'Bot') {
+              core.info('Bot or missing actor rejected.');
+              return;
+            }
+
+            let requestedApproval = false;
+            if (context.eventName === 'issues') {
+              requestedApproval =
+                context.payload.action === 'labeled' &&
+                context.payload.label?.name === 'approved';
+            } else if (context.eventName === 'issue_comment') {
+              const comment = context.payload.comment;
+              const trustedAssociation = [
+                'OWNER', 'MEMBER', 'COLLABORATOR'
+              ].includes(comment?.author_association);
+              requestedApproval =
+                context.payload.action === 'created' &&
+                comment?.body === 'APPROVED' &&
+                trustedAssociation;
+            }
+            if (!requestedApproval) {
+              core.info('Event is not an exact authorized approval.');
+              return;
+            }
+
+            try {
+              const result = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: sender.login
+              });
+              if (!['admin', 'maintain', 'write'].includes(result.data.permission)) {
+                core.info(`Insufficient repository permission: ${result.data.permission}`);
+                return;
+              }
+            } catch (error) {
+              core.warning(`Could not verify repository permission; fail closed: ${error.message}`);
+              return;
+            }
+
+            core.setOutput('approved', 'true');
+            core.info('Authorized Mission 002 approval verified.');
+
+  stage-after-approval:
+    needs: verify-approval
+    if: needs.verify-approval.outputs.approved == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Stage only after approval
+        env:
+          APPROVAL_ISSUE: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          mission = Path("MISSIONS/002-research-engine")
+          state_path = mission / "state.json"
+          artifact_path = mission / "artifacts" / "stage-record.md"
+          state = json.loads(state_path.read_text(encoding="utf-8"))
+
+          if state.get("state") != "AwaitApproval":
+              raise SystemExit("FAIL: mission is not awaiting approval")
+          if int(state.get("issue_number", -1)) != int(os.environ["APPROVAL_ISSUE"]):
+              raise SystemExit("FAIL: approval issue does not match active mission")
+          if artifact_path.exists():
+              raise SystemExit("FAIL: stage artifact already exists; refusing to overwrite")
+          if not (mission / "findings" / "research.md").is_file():
+              raise SystemExit("FAIL: research evidence is missing")
+          if not (mission / "synthesis.md").is_file():
+              raise SystemExit("FAIL: synthesis is missing")
+
+          artifact_path.parent.mkdir(parents=True, exist_ok=True)
+          artifact_path.write_text(
+              "# Mission 002 — Stage Record\n\n"
+              "- Authorized approval was verified by the workflow.\n"
+              "- This is a demonstration record only; it does not claim independent verification of research claims.\n"
+              "- No external business or production side effects were performed.\n",
+              encoding="utf-8"
+          )
+          state["state"] = "Stage"
+          state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+          with (mission / "log.md").open("a", encoding="utf-8") as f:
+              f.write("\n- Authorized approval verified; demonstration stage record created.\n")
+          PY
+
+      - name: Commit approved stage record
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add MISSIONS/002-research-engine/state.json MISSIONS/002-research-engine/artifacts/stage-record.md MISSIONS/002-research-engine/log.md
+          git diff --cached --check
+          git commit -m "Stage Mission 002 after authorized approval"
+          git push origin HEAD:main
