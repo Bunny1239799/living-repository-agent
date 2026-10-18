@@ -303,6 +303,7 @@ jobs:
               raise SystemExit("FAIL: approval issue does not match mission")
 
           artifact = mission / "artifacts" / "stage-record.md"
+          artifact.parent.mkdir(parents=True, exist_ok=True)
           artifact.write_text(
               "# LRA Stage Record\n\n"
               "Mission: `001-first-demo`\n"
