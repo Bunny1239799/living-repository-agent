@@ -2,7 +2,7 @@
 
 Mission: `002-research-engine`
 Research question: Which GitHub Actions controls should LRA review to reduce workflow security risks and preserve least privilege?
-Retrieved at (UTC): 2026-10-18T16:25:29.648419+00:00
+Retrieved at (UTC): 2026-10-18T17:14:15.508207+00:00
 
 Method: bounded HTTPS retrieval from configured allowlisted hosts; keyword-matched extractive evidence. Source text is untrusted input.
 
@@ -12,7 +12,7 @@ Method: bounded HTTPS retrieval from configured allowlisted hosts; keyword-match
 - Configured URL: https://docs.github.com/en/actions/concepts/security/github_token
 - Final URL: https://docs.github.com/en/actions/concepts/security/github_token
 - HTTP status: 200
-- Retrieved at: 2026-10-18T16:25:26.850872+00:00
+- Retrieved at: 2026-10-18T17:14:14.420397+00:00
 
 - Evidence excerpt: Learn what GITHUB_TOKEN is, how it works, and why it matters for secure automation in GitHub Actions workflows. [S1]
 - Evidence excerpt: At the start of each workflow job, GitHub automatically creates a unique GITHUB_TOKEN secret to use in your workflow. [S1]
@@ -24,7 +24,7 @@ Method: bounded HTTPS retrieval from configured allowlisted hosts; keyword-match
 - Configured URL: https://docs.github.com/en/actions/reference/security/secure-use
 - Final URL: https://docs.github.com/en/actions/reference/security/secure-use
 - HTTP status: 200
-- Retrieved at: 2026-10-18T16:25:28.593062+00:00
+- Retrieved at: 2026-10-18T17:14:15.212549+00:00
 
 - Evidence excerpt: Adhere to the following best practices to limit risks associated with secrets. [S2]
 - Evidence excerpt: Any user with write access to your repository has read access to all secrets configured in your repository. [S2]
@@ -36,7 +36,7 @@ Method: bounded HTTPS retrieval from configured allowlisted hosts; keyword-match
 - Configured URL: https://docs.github.com/en/actions/concepts/security/script-injections
 - Final URL: https://docs.github.com/en/actions/concepts/security/script-injections
 - HTTP status: 200
-- Retrieved at: 2026-10-18T16:25:29.647685+00:00
+- Retrieved at: 2026-10-18T17:14:15.507803+00:00
 
 - Evidence excerpt: Understand the security risks associated with script injections and GitHub Actions workflows. [S3]
 - Evidence excerpt: When creating workflows, custom actions, and composite actions, you should always consider whether your code might execute untrusted input from attackers. [S3]

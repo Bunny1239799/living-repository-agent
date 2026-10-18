@@ -1,7 +1,8 @@
 {
-    "mission_id":  "002-research-engine",
-    "state":  "Research",
-    "created":  "2026-10-18",
-    "title":  "Evidence-backed research engine",
-    "approval_required_before_stage":  true
+  "mission_id": "002-research-engine",
+  "state": "AwaitApproval",
+  "created": "2026-10-18",
+  "title": "Evidence-backed research engine",
+  "approval_required_before_stage": true,
+  "issue_number": 2
 }

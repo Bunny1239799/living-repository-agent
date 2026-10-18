@@ -7,3 +7,11 @@
 - Research engine retrieved 3 allowlisted sources.
 - Source-linked extractive findings and synthesis written.
 - State advanced from Research to Synthesize; no staging occurred.
+
+- Research engine retrieved 3 allowlisted sources.
+- Source-linked extractive findings and synthesis written.
+- State advanced from Research to Synthesize; no staging occurred.
+
+- Research workflow validated non-empty findings and synthesis; moved to AwaitApproval. No stage artifact created.
+
+- Approval request recorded: issue #2. Awaiting authorized human approval.
