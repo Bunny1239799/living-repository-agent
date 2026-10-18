@@ -1,0 +1,7 @@
+{
+  "id": "mission-lifecycle",
+  "type": "concept",
+  "label": "Mission Lifecycle",
+  "description": "A mission advances through explicit states with verifiable transitions.",
+  "status": "initial"
+}

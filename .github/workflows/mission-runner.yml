@@ -1,0 +1,340 @@
+name: LRA Mission Runner
+
+on:
+  workflow_dispatch:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  prepare-mission:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Prepare mission and stop at approval gate
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path(".")
+          mission = root / "MISSIONS" / "001-first-demo"
+          state_path = mission / "state.json"
+
+          if not state_path.is_file():
+              raise SystemExit("FAIL: mission state file is missing")
+
+          state = json.loads(state_path.read_text(encoding="utf-8"))
+
+          if state.get("mission_id") != "001-first-demo":
+              raise SystemExit("FAIL: unexpected mission ID")
+
+          if state.get("state") != "Init":
+              raise SystemExit(
+                  f"FAIL: expected Init, found {state.get('state')!r}. "
+                  "No files staged."
+              )
+
+          findings = mission / "findings"
+          proposals = mission / "proposals"
+          artifacts = mission / "artifacts"
+
+          for folder in (findings, proposals, artifacts):
+              folder.mkdir(parents=True, exist_ok=True)
+
+          (findings / "research.md").write_text(
+              "# Research Findings\n\n"
+              "Status: PLACEHOLDER — research has not yet been performed.\n\n"
+              "Mission: First demonstration mission.\n"
+              "Next action: Replace this placeholder with sourced findings.\n",
+              encoding="utf-8"
+          )
+
+          state["state"] = "Research"
+          state_path.write_text(
+              json.dumps(state, indent=2) + "\n", encoding="utf-8"
+          )
+
+          (mission / "synthesis.md").write_text(
+              "# Mission Synthesis\n\n"
+              "Status: PLACEHOLDER — no research conclusions claimed.\n"
+              "The findings must be reviewed before a real proposal is made.\n",
+              encoding="utf-8"
+          )
+
+          state["state"] = "Synthesize"
+          state_path.write_text(
+              json.dumps(state, indent=2) + "\n", encoding="utf-8"
+          )
+
+          proposal = proposals / "proposal.md"
+          proposal.write_text(
+              "# Proposal: First LRA Demonstration\n\n"
+              "## Objective\n"
+              "Demonstrate the mission lifecycle and approval gate.\n\n"
+              "## Current limitation\n"
+              "Research and synthesis are placeholders, not verified research.\n\n"
+              "## Proposed next step\n"
+              "Review the workflow and its approval behavior before staging.\n\n"
+              "## Safety\n"
+              "No staging or real-world side effects are authorized by this proposal.\n"
+              "Explicit human approval is required.\n",
+              encoding="utf-8"
+          )
+
+          state["state"] = "Propose"
+          state_path.write_text(
+              json.dumps(state, indent=2) + "\n", encoding="utf-8"
+          )
+
+          state["state"] = "AwaitApproval"
+          state_path.write_text(
+              json.dumps(state, indent=2) + "\n", encoding="utf-8"
+          )
+
+          with (mission / "log.md").open("a", encoding="utf-8") as log:
+              log.write(
+                  "\n- Workflow prepared the demonstration proposal.\n"
+                  "- Research and synthesis remain explicitly marked as placeholders.\n"
+                  "- Mission stopped at AwaitApproval; no staged artifact was created.\n"
+              )
+
+          if state.get("state") != "AwaitApproval":
+              raise SystemExit("FAIL: approval gate state verification failed")
+
+          if any(artifacts.iterdir()):
+              raise SystemExit("FAIL: artifacts directory must remain empty")
+
+          print("PASS: mission reached AwaitApproval")
+          print("PASS: no staged artifacts created")
+          PY
+
+      - name: Open approval issue
+        id: issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const file = 'MISSIONS/001-first-demo/state.json';
+            const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+
+            if (state.state !== 'AwaitApproval') {
+              throw new Error('Refusing to request approval outside AwaitApproval.');
+            }
+
+            if (state.issue_number) {
+              throw new Error('An approval issue is already recorded.');
+            }
+
+            const proposal = fs.readFileSync(
+              'MISSIONS/001-first-demo/proposals/proposal.md', 'utf8'
+            );
+
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'approved'
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'approved',
+                color: '0e8a16',
+                description: 'Human approval for LRA mission staging'
+              });
+            }
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'LRA Approval: 001-first-demo',
+              body: [
+                '## Human approval required',
+                '',
+                'Mission: `001-first-demo`',
+                'Current state: `AwaitApproval`',
+                '',
+                proposal,
+                '',
+                '## How to approve',
+                'A repository owner, member, or collaborator may add the `approved` label,',
+                'or post the exact comment `APPROVED`.',
+                '',
+                'Other comments do not authorize staging.'
+              ].join('\n')
+            });
+
+            state.issue_number = issue.data.number;
+            fs.writeFileSync(file, JSON.stringify(state, null, 2) + '\n');
+            core.setOutput('number', String(issue.data.number));
+            core.info(`Approval issue created: #${issue.data.number}`);
+
+      - name: Commit mission state and proposal
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add MISSIONS/001-first-demo
+          git commit -m "Prepare first demo mission for human approval"
+          git push
+
+  verify-approval-and-stage:
+    if: github.event_name == 'issues' || github.event_name == 'issue_comment'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify approval against the active mission
+        id: verify
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const state = JSON.parse(fs.readFileSync(
+              'MISSIONS/001-first-demo/state.json', 'utf8'
+            ));
+            const event = context.payload;
+            const issue = event.issue;
+
+            core.setOutput('approved', 'false');
+
+            if (!issue || issue.pull_request) {
+              core.info('Not an issue approval event; staging blocked.');
+              return;
+            }
+
+            if (state.state !== 'AwaitApproval' ||
+                Number(state.issue_number) !== Number(issue.number)) {
+              core.info('Mission state or issue number mismatch; staging blocked.');
+              return;
+            }
+
+            let valid = false;
+
+            if (context.eventName === 'issues' &&
+                event.action === 'labeled' &&
+                event.label?.name === 'approved') {
+              if (event.sender?.type === 'Bot' || !event.sender?.login) {
+                core.info('Bot or unidentified labeler; approval rejected.');
+                return;
+              }
+
+              const permission = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: event.sender.login
+              });
+
+              const authorized = ['admin', 'maintain', 'write']
+                .includes(permission.data.permission);
+
+              valid = authorized &&
+                issue.labels.some(label => label.name === 'approved');
+
+              if (!valid) {
+                core.info('Labeler lacks required permission; approval rejected.');
+              }
+            }
+
+            if (context.eventName === 'issue_comment' &&
+                event.action === 'created' &&
+                event.comment?.body === 'APPROVED') {
+              const trusted = ['OWNER', 'MEMBER', 'COLLABORATOR'];
+              const commenter = event.comment.user;
+
+              if (trusted.includes(event.comment.author_association) &&
+                  commenter?.type !== 'Bot' &&
+                  commenter?.login) {
+                const permission = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  username: commenter.login
+                });
+
+                valid = ['admin', 'maintain', 'write']
+                  .includes(permission.data.permission);
+              }
+            }
+
+            if (!valid) {
+              core.info('No valid human approval found; staging blocked.');
+              return;
+            }
+
+            core.setOutput('approved', 'true');
+            core.info('Valid approval verified for the active mission.');
+
+      - name: Create staged demonstration artifact
+        if: steps.verify.outputs.approved == 'true'
+        shell: bash
+        env:
+          APPROVAL_ISSUE: ${{ github.event.issue.number }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          mission = Path("MISSIONS/001-first-demo")
+          state_path = mission / "state.json"
+          state = json.loads(state_path.read_text(encoding="utf-8"))
+
+          if state.get("state") != "AwaitApproval":
+              raise SystemExit("FAIL: mission is not awaiting approval")
+
+          if int(state.get("issue_number", -1)) != int(os.environ["APPROVAL_ISSUE"]):
+              raise SystemExit("FAIL: approval issue does not match mission")
+
+          artifact = mission / "artifacts" / "stage-record.md"
+          artifact.write_text(
+              "# LRA Stage Record\n\n"
+              "Mission: `001-first-demo`\n"
+              "State: `Stage`\n"
+              "Approval: verified by the mission workflow.\n"
+              "Scope: demonstration artifact only; no external side effects.\n",
+              encoding="utf-8"
+          )
+
+          state["state"] = "Stage"
+          state_path.write_text(
+              json.dumps(state, indent=2) + "\n", encoding="utf-8"
+          )
+
+          with (mission / "log.md").open("a", encoding="utf-8") as log:
+              log.write(
+                  "\n- Valid approval verified by the workflow.\n"
+                  "- Demonstration stage record created.\n"
+              )
+
+          if state.get("state") != "Stage" or not artifact.is_file():
+              raise SystemExit("FAIL: stage verification failed")
+
+          print("PASS: approved demonstration artifact created")
+          PY
+
+      - name: Commit approved stage
+        if: steps.verify.outputs.approved == 'true'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add MISSIONS/001-first-demo
+          git commit -m "Stage approved first demo mission"
+          git push

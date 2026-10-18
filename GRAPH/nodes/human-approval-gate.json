@@ -1,0 +1,7 @@
+{
+  "id": "human-approval-gate",
+  "type": "safety_control",
+  "label": "Human Approval Gate",
+  "description": "Staging is blocked until authorized human approval is verified.",
+  "status": "required"
+}

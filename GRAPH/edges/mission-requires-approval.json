@@ -1,0 +1,7 @@
+{
+  "id": "mission-requires-approval",
+  "from": "mission-lifecycle",
+  "to": "human-approval-gate",
+  "relationship": "requires",
+  "description": "The mission lifecycle requires approval before staging."
+}

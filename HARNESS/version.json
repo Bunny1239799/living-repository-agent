@@ -1,0 +1,8 @@
+{
+  "project": "Living Repository Agent",
+  "short_name": "LRA",
+  "version": "0.1.0",
+  "stage": "foundation",
+  "status": "in_development",
+  "approval_gate_required": true
+}
